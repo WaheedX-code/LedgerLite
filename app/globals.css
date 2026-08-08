@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid theme("colors.forest");
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* The signature element: a ruled ledger row, used for every list of
+     invoices/expenses instead of generic cards. Numbers are always
+     tabular-mono and right-aligned, like a real ledger book. */
+  .ledger-row {
+    @apply grid grid-cols-[1fr_auto_auto] items-baseline gap-6 border-b border-rule py-3;
+  }
+  .ledger-amount {
+    @apply font-mono tabular-nums text-right;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-sm bg-ink px-4 py-2 text-sm font-medium text-paper transition-colors hover:bg-ink/90;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-sm border border-rule px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-rule/30;
+  }
+  .field-label {
+    @apply block text-xs uppercase tracking-wide text-ink/60 mb-1;
+  }
+  .field-input {
+    @apply w-full rounded-sm border border-rule bg-paper px-3 py-2 text-sm text-ink focus-visible:border-forest;
+  }
+}

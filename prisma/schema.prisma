@@ -1,0 +1,66 @@
+// LedgerLite data model
+// Role-based access is enforced in application code (lib/auth.ts), not just here —
+// Prisma has no row-level security, so every query path MUST filter by ownerId
+// unless the caller has been verified as ADMIN. See Project 3 (AuthZ) brief.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+model User {
+  id        String   @id // Clerk user id — no local password/session data ever stored
+  email     String   @unique
+  role      Role     @default(MEMBER)
+  apiKey    String?  @unique // for the public API integration scenario (Project 3)
+  createdAt DateTime @default(now())
+
+  invoices Invoice[]
+  expenses Expense[]
+}
+
+model Invoice {
+  id          String   @id @default(cuid())
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id])
+  clientName  String
+  amountCents Int // stored as integer cents — never store money as float
+  dueDate     DateTime
+  status      String   @default("draft") // draft | sent | paid
+  items       InvoiceItem[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([ownerId])
+}
+
+model InvoiceItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Int
+  unitPriceCents Int
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id])
+  description String
+  amountCents Int
+  category    String
+  incurredAt  DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([ownerId])
+}
