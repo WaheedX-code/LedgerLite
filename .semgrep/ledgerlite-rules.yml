@@ -110,7 +110,8 @@ rules:
           - pattern: |
               if ($RESOURCE.ownerId != $USER.id) { ... }
       # Don't flag the pattern inside lib/auth.ts itself — that's the
-      # one authorized place this comparison is allowed to live.# NOTE: Semgrep's ellipsis (...) is valid for matching zero-or-more
+      # one authorized place this comparison is allowed to live.
+      # NOTE: Semgrep's ellipsis (...) is valid for matching zero-or-more
       # statements/arguments/array-or-object-elements, but NOT as a bare
       # function parameter list — `function foo(...)` is not valid
       # Semgrep pattern syntax and fails semgrep-core's PatternParseError
@@ -199,6 +200,7 @@ rules:
                 - pattern: "!isLegalInvoiceStatusTransition(...)"
                 - pattern: $X && isLegalInvoiceStatusTransition(...)
                 - pattern: $X || isLegalInvoiceStatusTransition(...)
+
   # -------------------------------------------------------------------
   # Rule 5 (Deliverable 1) / TICKET-12: a Prisma upsert() call must not
   # be left without a try/catch that handles P2002 specifically — this
