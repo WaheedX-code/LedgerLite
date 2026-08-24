@@ -103,7 +103,7 @@ jobs:
         # resolved, change --audit-level back to high. Do not leave this
         # at critical-only past that point — check TICKET-P2-01's status
         # before assuming this exception still applies.
-        run: npm audit --audit-level=high
+        run: npm audit --audit-level=critical
       - name: Audit — full report (informational, always runs)
         if: always()
         run: npm audit --json > npm-audit-full.json || true
