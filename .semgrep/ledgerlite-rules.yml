@@ -110,9 +110,17 @@ rules:
           - pattern: |
               if ($RESOURCE.ownerId != $USER.id) { ... }
       # Don't flag the pattern inside lib/auth.ts itself — that's the
-      # one authorized place this comparison is allowed to live.
+      # one authorized place this comparison is allowed to live.# NOTE: Semgrep's ellipsis (...) is valid for matching zero-or-more
+      # statements/arguments/array-or-object-elements, but NOT as a bare
+      # function parameter list — `function foo(...)` is not valid
+      # Semgrep pattern syntax and fails semgrep-core's PatternParseError
+      # check (confirmed: this exact construct caused 2 of this file's 6
+      # rules to be silently dropped on the first live CI run, reducing
+      # "Custom: 6" to "Custom: 4" with no rule-level error surfaced —
+      # see Deliverable 4, Tuning Log, Entry 3). Use $...ARGS to match an
+      # arbitrary parameter list instead.
       - pattern-not-inside: |
-          export function assertOwnerOrAdmin(...) { ... }
+          export function assertOwnerOrAdmin($...ARGS) { ... }
 
   # -------------------------------------------------------------------
   # Rule 3 (Deliverable 1) / SR-9: money must never be typed or compared
@@ -172,11 +180,25 @@ rules:
     patterns:
       - pattern: |
           $PRISMA.$MODEL.update({ ..., data: { status: $STATUS, ... } })
+      # NOTE: the original version of this rule used
+      # `if (...isLegalInvoiceStatusTransition(...)) { ... }` as a
+      # pattern-not-inside — a bare leading ellipsis directly against a
+      # function call inside an if-condition is not valid Semgrep syntax
+      # and caused a PatternParseError, silently dropping this rule from
+      # the active set on the first live CI run (see Deliverable 4,
+      # Tuning Log, Entry 3). Replaced with `$COND` matching the whole
+      # condition expression, which is the documented way to match "any
+      # condition containing this call" without an invalid bare ellipsis.
       - pattern-not-inside: |
-          if (...isLegalInvoiceStatusTransition(...)) { ... }
-      - pattern-not-inside: |
-          if (!isLegalInvoiceStatusTransition(...)) { ... }
-
+          if ($COND) { ... }
+      - metavariable-pattern:
+          metavariable: $COND
+          patterns:
+            - pattern-either:
+                - pattern: isLegalInvoiceStatusTransition(...)
+                - pattern: "!isLegalInvoiceStatusTransition(...)"
+                - pattern: $X && isLegalInvoiceStatusTransition(...)
+                - pattern: $X || isLegalInvoiceStatusTransition(...)
   # -------------------------------------------------------------------
   # Rule 5 (Deliverable 1) / TICKET-12: a Prisma upsert() call must not
   # be left without a try/catch that handles P2002 specifically — this
