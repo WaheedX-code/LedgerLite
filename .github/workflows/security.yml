@@ -1,0 +1,109 @@
+name: Security
+
+"on":
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  secret-scan:
+    name: Secret scan (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history required for Gitleaks)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No GITLEAKS_LICENSE needed — this repo is on a personal account,
+          # not an organization; the free tier covers this per Gitleaks'
+          # own licensing terms (org accounts need a license, individual
+          # accounts do not).
+
+  sast:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Run Semgrep — blocking rules (ERROR severity)
+        run: |
+          semgrep scan \
+            --config p/owasp-top-ten \
+            --config .semgrep/ledgerlite-rules.yml \
+            --severity ERROR \
+            --error \
+            --sarif --output semgrep-blocking.sarif
+      - name: Run Semgrep — advisory rules (WARNING severity, non-blocking)
+        if: always()
+        run: |
+          semgrep scan \
+            --config p/owasp-top-ten \
+            --config .semgrep/ledgerlite-rules.yml \
+            --severity WARNING \
+            --sarif --output semgrep-warning.sarif || true
+      - name: Upload SARIF (blocking findings)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep-blocking.sarif
+          category: semgrep-blocking
+      - name: Upload SARIF (advisory findings)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep-warning.sarif
+          category: semgrep-warning
+
+  dependency-audit:
+    name: Dependency audit (npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Audit — block on high/critical
+        run: npm audit --audit-level=high
+      - name: Audit — full report (informational, always runs)
+        if: always()
+        run: npm audit --json > npm-audit-full.json || true
+      - name: Upload full audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: npm-audit-full.json
+          retention-days: 90
+
+  sbom:
+    name: SBOM generation (CycloneDX)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: ledgerlite-sbom.cdx.json
+          upload-artifact: true
+          artifact-name: ledgerlite-sbom
