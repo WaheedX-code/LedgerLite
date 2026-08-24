@@ -1,0 +1,208 @@
+# LedgerLite custom Semgrep rules (Project 2).
+#
+# Each rule below encodes one rule from the Secure Coding Standards doc
+# (Deliverable 1) as a machine-checkable pattern. Every rule's id links back
+# to the specific standard it enforces. These run alongside p/owasp-top-ten
+# in .github/workflows/security.yml's sast job — p/owasp-top-ten catches
+# general JS/TS vulnerability classes; these catch LedgerLite-specific
+# convention violations that a generic ruleset has no way to know about.
+#
+# Severity legend (see Deliverable 5, Severity & Escalation Policy, for the
+# full policy this implements):
+#   ERROR   — blocks the merge (workflow's --severity ERROR --error step)
+#   WARNING — surfaces on the PR, does not block
+
+rules:
+  # -------------------------------------------------------------------
+  # Rule 1 (Deliverable 1) / SR-5: never pass raw request input directly
+  # into a Prisma write. The dangerous pattern is spreading req.json()'s
+  # result (or a variable directly assigned from it) into a Prisma
+  # create/update call, bypassing Zod validation entirely.
+  #
+  # Deliberately does NOT flag ...parsed.data (the correct, standard
+  # pattern used in app/api/expenses/route.ts's POST handler and
+  # app/api/invoices/route.ts) — only flags spreading something that
+  # still looks like raw request input.
+  # -------------------------------------------------------------------
+  - id: ledgerlite-no-raw-body-into-prisma
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Raw request body data appears to be passed directly into a Prisma
+      write without going through a Zod schema first. Per the LedgerLite
+      coding standard (Rule 1 / SR-5), every Prisma create/update/upsert
+      call must receive data that has already been through
+      `<schema>.safeParse()` or `<schema>.parse()` — never req.json()'s
+      result directly, and never a variable that still holds the raw,
+      unvalidated body. Validate through a schema in lib/validation.ts
+      first, then pass `parsed.data` (or a schema-validated field
+      extracted from it), not the raw object.
+    metadata:
+      standard: "Deliverable 1, Rule 1"
+      traces-to: "SR-5"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $PRISMA.$MODEL.create({ data: { ...$BODY, ... } })
+          - pattern: |
+              $PRISMA.$MODEL.update({ ..., data: { ...$BODY, ... } })
+          - pattern: |
+              $PRISMA.$MODEL.upsert({ ..., create: { ...$BODY, ... } })
+      - metavariable-regex:
+          metavariable: $BODY
+          # Matches variable names that look like raw request input
+          # (body, json, req*, request*) but NOT anything containing
+          # "parsed" or "validated" — those are the correct pattern.
+          regex: "^(?!.*([Pp]arsed|[Vv]alidated)).*([Bb]ody|[Jj]son|[Rr]eq).*$"
+
+  # -------------------------------------------------------------------
+  # Rule 1 (Deliverable 1) / TICKET-08: no schema may use .passthrough(),
+  # which disables Zod's default unknown-key-stripping and reopens the
+  # exact mass-assignment path SR-5 exists to close.
+  # -------------------------------------------------------------------
+  - id: ledgerlite-no-zod-passthrough
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      .passthrough() on a Zod schema disables the default behavior of
+      stripping unrecognized keys from parsed input. Per the LedgerLite
+      coding standard (Rule 1 sub-rule / TICKET-08), no schema in
+      lib/validation.ts may use .passthrough() — it is exactly the
+      mechanism that currently prevents a client from injecting fields
+      like `role` or `ownerId` into a request body (see SR-5). If a
+      specific field genuinely needs to pass through, add it to the
+      schema explicitly instead.
+    metadata:
+      standard: "Deliverable 1, Rule 1 sub-rule"
+      traces-to: "TICKET-08, SR-5"
+    pattern: $SCHEMA.passthrough()
+
+  # -------------------------------------------------------------------
+  # Rule 2 (Deliverable 1) / SR-7: no route handler may re-implement an
+  # ownership/role check inline — it must go through assertOwnerOrAdmin()
+  # or requireAdmin() in lib/auth.ts. This pattern looks for the specific
+  # shape of a hand-written ownership comparison (comparing a user id
+  # field against an owner id field) outside of lib/auth.ts itself.
+  # -------------------------------------------------------------------
+  - id: ledgerlite-no-inline-ownership-check
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      This looks like a hand-written ownership/authorization check
+      (comparing a user id against a resource owner id directly) instead
+      of calling assertOwnerOrAdmin() or requireAdmin() from lib/auth.ts.
+      Per the LedgerLite coding standard (Rule 2 / SR-7), every
+      authorization check must go through lib/auth.ts's single
+      implementation — duplicated inline checks are exactly how BOLA
+      bugs get introduced (Project 1, lib/auth.ts's own header comment).
+      Replace this with a call to assertOwnerOrAdmin(user, resource.ownerId).
+    metadata:
+      standard: "Deliverable 1, Rule 2"
+      traces-to: "SR-7"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              if ($USER.id !== $RESOURCE.ownerId) { ... }
+          - pattern: |
+              if ($USER.id != $RESOURCE.ownerId) { ... }
+          - pattern: |
+              if ($RESOURCE.ownerId !== $USER.id) { ... }
+          - pattern: |
+              if ($RESOURCE.ownerId != $USER.id) { ... }
+      # Don't flag the pattern inside lib/auth.ts itself — that's the
+      # one authorized place this comparison is allowed to live.
+      - pattern-not-inside: |
+          export function assertOwnerOrAdmin(...) { ... }
+
+  # -------------------------------------------------------------------
+  # Rule 3 (Deliverable 1) / SR-9: money must never be typed or compared
+  # as a floating-point number. This flags the more common ways a float
+  # sneaks in: a Zod schema using .number() for a *Cents field without
+  # .int(), or a plain `number` type annotation on a cents-suffixed field.
+  # -------------------------------------------------------------------
+  - id: ledgerlite-money-field-requires-int
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A field name ending in "Cents" (LedgerLite's naming convention for
+      monetary amounts, e.g. amountCents, unitPriceCents) is being
+      validated with z.number() but no .int() constraint. Per the
+      LedgerLite coding standard (Rule 3 / SR-9), every monetary field
+      must reject fractional values — chain .int() after .number(),
+      matching the existing pattern in lib/validation.ts's
+      invoiceItemSchema and createExpenseSchema.
+    metadata:
+      standard: "Deliverable 1, Rule 3"
+      traces-to: "SR-9"
+    patterns:
+      - pattern: |
+          $FIELD: z.number(...)
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: ".*Cents$"
+      - pattern-not: |
+          $FIELD: z.number(...).int(...)
+      - pattern-not: |
+          $FIELD: z.number(...).int()
+
+  # -------------------------------------------------------------------
+  # Rule 4 (Deliverable 1) / SR-1 / TICKET-04: a PATCH/PUT handler that
+  # writes a `status` field must not do so based on schema validation
+  # alone — it must check isLegalInvoiceStatusTransition (or an
+  # equivalent transition guard) before the Prisma write. This is a
+  # WARNING, not ERROR: the pattern below can't fully verify the guard
+  # is present (that requires understanding control flow Semgrep's
+  # pattern matching alone can't express), so it flags for human review
+  # rather than auto-blocking on a possible false positive.
+  # -------------------------------------------------------------------
+  - id: ledgerlite-status-write-should-check-transition
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      This writes a `status` field via Prisma without an obvious call to
+      isLegalInvoiceStatusTransition (or similar transition guard)
+      nearby. Per the LedgerLite coding standard (Rule 4 / SR-1 /
+      TICKET-04), any lifecycle field needs its transition validated,
+      not just its new value's type. If this route already guards the
+      transition (e.g. app/api/invoices/[id]/route.ts's PATCH handler),
+      this is a false positive — but please confirm before dismissing.
+    metadata:
+      standard: "Deliverable 1, Rule 4"
+      traces-to: "SR-1, TICKET-04"
+    patterns:
+      - pattern: |
+          $PRISMA.$MODEL.update({ ..., data: { status: $STATUS, ... } })
+      - pattern-not-inside: |
+          if (...isLegalInvoiceStatusTransition(...)) { ... }
+      - pattern-not-inside: |
+          if (!isLegalInvoiceStatusTransition(...)) { ... }
+
+  # -------------------------------------------------------------------
+  # Rule 5 (Deliverable 1) / TICKET-12: a Prisma upsert() call must not
+  # be left without a try/catch that handles P2002 specifically — this
+  # is the exact shape of the bug that caused Project 1's Threat #16.
+  # WARNING, not ERROR: a bare upsert() is not always wrong (e.g. a
+  # script with no concurrent-access risk), so this asks for confirmation
+  # rather than blocking automatically.
+  # -------------------------------------------------------------------
+  - id: ledgerlite-upsert-without-p2002-handling
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      A prisma.$MODEL.upsert() call was found with no nearby
+      PrismaClientKnownRequestError / P2002 handling. Per the LedgerLite
+      coding standard (Rule 5 / TICKET-12), any upsert() whose `where`
+      clause is keyed on a different field than one written in `create`
+      (e.g. keyed on `id` but also writing a unique `email`) is exposed
+      to the exact concurrent-request race that caused Project 1's
+      Threat #16 (lib/auth.ts's getCurrentUser(), confirmed live —
+      digest 332712304). If this upsert's create branch writes no other
+      unique field, this may be a false positive — please confirm.
+    metadata:
+      standard: "Deliverable 1, Rule 5"
+      traces-to: "TICKET-12, Threat #16"
+    patterns:
+      - pattern: |
+          $PRISMA.$MODEL.upsert({ ... })
+      - pattern-not-inside: |
+          try { ... } catch ($E) { ... }
