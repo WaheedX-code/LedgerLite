@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     }
 
     const expense = await prisma.expense.create({
-      data: { ...parsed.data, incurredAt: new Date(parsed.data.incurredAt), ownerId: user.id },
+      data: { ...body, incurredAt: new Date(body.incurredAt), ownerId: user.id },
     });
     return NextResponse.json(expense, { status: 201 });
   } catch (e) {
