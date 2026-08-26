@@ -63,7 +63,7 @@ export function requireAdmin(user: User) {
   if (user.role !== "ADMIN") {
     throw new ForbiddenError("Admin role required");
   }
-}
+} 
 
 /** Enforces: a MEMBER may only touch resources they own; an ADMIN may touch any.
  * This is the exact check Project 3's access-control tests assert against. */
