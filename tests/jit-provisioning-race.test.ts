@@ -116,4 +116,3 @@ describe("getCurrentUser() — JIT provisioning race condition (Threat #16)", ()
     expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
   });
 });
-

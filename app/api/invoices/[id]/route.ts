@@ -61,7 +61,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         { status: 400 }
       );
     }
-    
     const updated = await prisma.invoice.update({
       where: { id: params.id },
       data: { status: parsed.data.status },

@@ -146,4 +146,3 @@ describe("DELETE /api/invoices/[id] — cross-tenant access (BOLA)", () => {
     expect(prismaMock.invoice.delete).not.toHaveBeenCalled();
   });
 });
-

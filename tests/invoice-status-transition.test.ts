@@ -108,4 +108,3 @@ describe("PATCH /api/invoices/[id] — status transition guard (SR-1)", () => {
     });
   });
 });
-

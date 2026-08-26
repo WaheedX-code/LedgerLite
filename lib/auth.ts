@@ -17,7 +17,7 @@ export class UnauthenticatedError extends Error {}
 export class ForbiddenError extends Error {}
 
 /** Resolves the Clerk session to our local User row. Creates the row on
- * first sight (JIT provisioning) so we never trust client-supplied identity. 
+ * first sight (JIT provisioning) so we never trust client-supplied identity.
  
  * Coding standard (Project 2, Rule 5 / TICKET-12): this upsert's `where`
  * clause is keyed on `id`, but `create` also writes `email`, a field with

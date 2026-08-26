@@ -239,4 +239,3 @@ rules:
           $PRISMA.$MODEL.upsert({ ... })
       - pattern-not-inside: |
           try { ... } catch ($E) { ... }
-
