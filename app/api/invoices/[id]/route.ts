@@ -5,7 +5,7 @@ import {
   UnauthenticatedError,
   ForbiddenError,
 } from "@/lib/auth";
-import { updateInvoiceStatusSchema } from "@/lib/validation";
+import { updateInvoiceStatusSchema, isLegalInvoiceStatusTransition } from "@/lib/validation";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -45,7 +45,22 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });
     }
-
+    
+    // Coding standard (Project 2, Rule 4 / TICKET-04 / SR-1): the schema
+    // above only validates that the NEW value is a legal enum member — it
+    // says nothing about whether the transition from the CURRENT status is
+    // allowed. ADMIN bypasses this check (consistent with
+    // assertOwnerOrAdmin's all-access-for-ADMIN pattern); a MEMBER may only
+    // move status forward per LEGAL_INVOICE_STATUS_TRANSITIONS.
+    if (
+      user.role !== "ADMIN" &&
+      !isLegalInvoiceStatusTransition(invoice.status, parsed.data.status)
+    ) {
+      return NextResponse.json(
+        { error: `Cannot change status from '${invoice.status}' to '${parsed.data.status}'` },
+        { status: 400 }
+      );
+    }
     const updated = await prisma.invoice.update({
       where: { id: params.id },
       data: { status: parsed.data.status },
