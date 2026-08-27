@@ -24,7 +24,7 @@ export default async function DashboardLayout({
               <Link href="/dashboard/expenses" className="hover:text-ink">
                 Expenses
               </Link>
-              <Link href="/dashboard/settings/api=key" className="hover:text-ink">
+              <Link href="/dashboard/settings/api-key" className="hover:text-ink">
                 API key
               </Link>
               {user.role === "ADMIN" && (
