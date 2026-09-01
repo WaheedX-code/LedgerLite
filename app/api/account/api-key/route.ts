@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { getCurrentUser, UnauthenticatedError } from "@/lib/auth";
+import { getCurrentUser, UnauthenticatedError, hashApiKey } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -17,16 +17,17 @@ import { prisma } from "@/lib/prisma";
  * storing it in plaintext, because shipping a NEW plaintext-secret
  * write path would directly reproduce Threat #8 — that is a baseline
  * safety requirement for building this feature at all, not scope creep
- * into Project 3's territory. What this route does NOT do, and what
- * remains genuinely Project 3's job (TICKET-02, TICKET-07): updating
- * lib/auth.ts's getUserByApiKey() to hash-and-compare instead of a
- * direct plaintext lookup, and adding scope/permission metadata to the
- * key. Until TICKET-02 lands, a key generated here will NOT
- * successfully authenticate against GET /api/v1/invoices/:id, because
- * that route's lookup still does a direct plaintext match against
- * User.apiKey. This is flagged explicitly, not hidden, in the UI page
- * itself (app/dashboard/settings/api-key/page.tsx) and in this
- * project's backlog closure report.
+ * into Project 3's territory.
+ *
+ * TICKET-02 / TICKET-07 (Project 3) status: CLOSED. lib/auth.ts's
+ * getUserByApiKey() now hashes the incoming raw key with the same
+ * hashApiKey() function this route uses (imported from lib/auth.ts, not
+ * duplicated here) before querying User.apiKey. A key generated here now
+ * DOES successfully authenticate against GET /api/v1/invoices/:id — see
+ * tests/api-key-auth.test.ts for the regression coverage proving this,
+ * and the Project 3 walkthrough for the reproduction that found the
+ * original break. Scope/permission metadata on the key remains a
+ * separate, not-yet-scoped enhancement.
  */
 
 function generateRawKey(): string {
@@ -40,15 +41,11 @@ function generateRawKey(): string {
   return `llk_live_${random}`;
 }
 
-function hashKey(rawKey: string): string {
-  return crypto.createHash("sha256").update(rawKey).digest("hex");
-}
-
 export async function POST(_req: NextRequest) {
   try {
     const user = await getCurrentUser();
     const rawKey = generateRawKey();
-    const hashed = hashKey(rawKey);
+    const hashed = hashApiKey(rawKey);
 
     await prisma.user.update({
       where: { id: user.id },
@@ -99,3 +96,5 @@ export async function GET(_req: NextRequest) {
     throw e;
   }
 }
+
+

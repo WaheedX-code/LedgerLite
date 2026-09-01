@@ -12,9 +12,11 @@ import { prisma } from "@/lib/prisma";
  *    an ID. Enforced below via the ownerId check, same pattern as assertOwnerOrAdmin.
  *  - API4 Unrestricted Resource Consumption: rate limiting belongs at the edge
  *    (Cloudflare, Product B) — this route assumes it's NOT the only control.
- *  - API2 Broken Authentication: the API key is opaque, stored hashed in a
- *    real deployment (this demo stores it plain for simplicity — call that
- *    out explicitly in the Project 3 writeup as a known simplification).
+ *  - API2 Broken Authentication: the API key is opaque and stored as a
+ *    SHA-256 hash (User.apiKey), never in plaintext. TICKET-02/TICKET-07
+ *    (Project 3): getUserByApiKey() in lib/auth.ts hashes the incoming
+ *    x-api-key header with the same hashApiKey() function used at
+ *    generation time before querying — see tests/api-key-auth.test.ts.
  */
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const apiKey = req.headers.get("x-api-key");

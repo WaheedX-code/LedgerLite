@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
+import crypto from "crypto";
 import { prisma } from "./prisma";
 import type { User } from "@prisma/client";
 
@@ -75,9 +76,24 @@ export function assertOwnerOrAdmin(user: User, resourceOwnerId: string) {
 }
 
 /** Validates the x-api-key header used by the public integration endpoint
- * (Project 3's OWASP API Top 10 target). Constant-time-ish comparison via
- * a DB lookup rather than string equality on a request-supplied value alone. */
+ * (Project 3's OWASP API Top 10 target).
+ *
+ * TICKET-02 / TICKET-07 (Project 3): User.apiKey stores a SHA-256 hash,
+ * never the raw key (see hashApiKey below, and app/api/account/api-key/
+ * route.ts, which is the only place a raw key is ever generated or shown
+ * to a user). This function must hash the incoming raw key with the same
+ * algorithm before querying, or every legitimately generated key silently
+ * fails to authenticate — that was a confirmed, prior to this fix: a freshly
+ * generated key returned 401 "Invalid or missing API
+ * key" from GET /api/v1/invoices/:id because the previous implementation
+ * compared the raw incoming key directly against the hashed column via
+ * `prisma.user.findUnique({ where: { apiKey } })`, which can never match. */
+export function hashApiKey(rawKey: string): string {
+  return crypto.createHash("sha256").update(rawKey).digest("hex");
+}
+
 export async function getUserByApiKey(apiKey: string | null): Promise<User | null> {
   if (!apiKey) return null;
-  return prisma.user.findUnique({ where: { apiKey } });
+  const hashed = hashApiKey(apiKey);
+  return prisma.user.findUnique({ where: { apiKey: hashed } });
 }
