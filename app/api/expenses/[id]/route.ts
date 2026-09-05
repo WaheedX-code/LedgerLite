@@ -6,6 +6,7 @@ import {
   ForbiddenError,
 } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAdminCrossTenantAccess } from "@/lib/audit";
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -14,6 +15,16 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
     if (!expense) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     assertOwnerOrAdmin(user, expense.ownerId);
+
+    // TICKET-01 / SR-2 (b): ADMIN deleting a resource they don't own.
+    if (user.role === "ADMIN" && expense.ownerId !== user.id) {
+      await logAdminCrossTenantAccess({
+        actorId: user.id,
+        resourceType: "Expense",
+        resourceId: expense.id,
+        resourceOwnerId: expense.ownerId,
+      });
+    }
 
     await prisma.expense.delete({ where: { id: params.id } });
     return new NextResponse(null, { status: 204 });

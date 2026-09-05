@@ -1,0 +1,4 @@
+-- This migration is a duplicate of 0_init and intentionally left empty.
+-- Original content created the Role enum and all core tables, which
+-- 0_init already created. See the Project 3 walkthrough for the full
+-- investigation of how this migration history became duplicated.

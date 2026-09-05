@@ -1,8 +1,3 @@
-// LedgerLite data model
-// Role-based access is enforced in application code (lib/auth.ts), not just here —
-// Prisma has no row-level security, so every query path MUST filter by ownerId
-// unless the caller has been verified as ADMIN. See Project 3 (AuthZ) brief.
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,57 +5,76 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-}
-
-enum Role {
-  ADMIN
-  MEMBER
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
-  id        String   @id // Clerk user id — no local password/session data ever stored
-  email     String   @unique
-  role      Role     @default(MEMBER)
-  apiKey    String?  @unique // for the public API integration scenario (Project 3)
-  createdAt DateTime @default(now())
-
-  invoices Invoice[]
-  expenses Expense[]
+  id        String    @id
+  email     String    @unique
+  role      Role      @default(MEMBER)
+  apiKey    String?   @unique
+  createdAt DateTime  @default(now())
+  expenses  Expense[]
+  invoices  Invoice[]
 }
 
 model Invoice {
-  id          String   @id @default(cuid())
+  id          String        @id @default(cuid())
   ownerId     String
-  owner       User     @relation(fields: [ownerId], references: [id])
   clientName  String
-  amountCents Int // stored as integer cents — never store money as float
+  amountCents Int
   dueDate     DateTime
-  status      String   @default("draft") // draft | sent | paid
+  status      String        @default("draft")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  owner       User          @relation(fields: [ownerId], references: [id])
   items       InvoiceItem[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 
   @@index([ownerId])
 }
 
 model InvoiceItem {
-  id          String  @id @default(cuid())
-  invoiceId   String
-  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  description String
-  quantity    Int
+  id             String  @id @default(cuid())
+  invoiceId      String
+  description    String
+  quantity       Int
   unitPriceCents Int
+  invoice        Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 }
 
 model Expense {
   id          String   @id @default(cuid())
   ownerId     String
-  owner       User     @relation(fields: [ownerId], references: [id])
   description String
   amountCents Int
   category    String
   incurredAt  DateTime
   createdAt   DateTime @default(now())
+  owner       User     @relation(fields: [ownerId], references: [id])
 
   @@index([ownerId])
+}
+
+enum AuditAction {
+  STATUS_CHANGE
+  ADMIN_CROSS_TENANT_ACCESS
+}
+
+model AuditLog {
+  id              String      @id @default(cuid())
+  actorId         String // the User.id who performed the action
+  action          AuditAction
+  resourceType    String // "Invoice" | "Expense"
+  resourceId      String? // null for collection-level ADMIN_CROSS_TENANT_ACCESS entries
+  resourceOwnerId String? // null for collection-level entries (multiple owners possible)
+  metadata        Json? // e.g. { "from": "draft", "to": "sent" } for STATUS_CHANGE
+  createdAt       DateTime    @default(now())
+
+  @@index([actorId])
+  @@index([resourceType, resourceId])
+}
+
+enum Role {
+  ADMIN
+  MEMBER
 }
